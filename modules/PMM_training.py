@@ -22,7 +22,7 @@ if __name__ == '__main__':
 from modules.components.data_classes import PreProcessing
 from modules.components.training_classes import ColorCodeModel, RealTimeHistory, ModelTraining, ModelValidation
 import modules.global_variables as GlobVar
-import modules.configurations as cnf
+import configurations as cnf
 
 # [LOAD DATASETS]
 #==============================================================================
@@ -54,6 +54,7 @@ Data preprocessing
 STEP 1 -----> Preprocess data for FAIRS training
 ''')
 
+
 # add number positions, map numbers to roulette color and reshape dataset
 #------------------------------------------------------------------------------
 PP = PreProcessing()
@@ -81,14 +82,26 @@ if cnf.use_test_data == True:
     X_test, Y_test = PP.timeseries_labeling(testset, cnf.window_size, cnf.output_size)        
 else:
     train_samples, test_samples = input_timeseries.shape[0], 0       
-    X_train, Y_train = PP.timeseries_labeling(input_timeseries, cnf.window_size, cnf.output_size)   
+    X_train, Y_train = PP.timeseries_labeling(input_timeseries, cnf.window_size, cnf.output_size)
+   
 
 # [ONE HOT ENCODE THE LABELS]
 #==============================================================================
 # ...
 #==============================================================================
-print('''STEP 2 -----> One-Hot encode timeseries labels (Y data)
+print('''STEP 2 -----> One-Hot encode timeseries labels (Y data) and generate 2D position matrix
 ''')
+
+# generate matrices
+#------------------------------------------------------------------------------
+if cnf.use_test_data == True: 
+    train_matrix = [PP.positional_matrix(x) for x in trainset['encoding'].to_list()] 
+    test_matrix = [PP.positional_matrix(x) for x in testset['encoding'].to_list()] 
+    X_train_matrix, Y_train_matrix = PP.timeseries_labeling(train_matrix, cnf.window_size, cnf.output_size)  
+    X_test_matrix, Y_test_matrix = PP.timeseries_labeling(test_matrix, cnf.window_size, cnf.output_size) 
+else:
+    train_matrix = [PP.positional_matrix(x) for x in input_timeseries['encoding'].to_list()] 
+    X_train_matrix, Y_train_matrix = PP.timeseries_labeling(train_matrix, cnf.window_size, cnf.output_size) 
 
 # one hot encode the output for softmax training shape = (timesteps, features)
 #------------------------------------------------------------------------------
@@ -107,7 +120,7 @@ if cnf.use_test_data == True:
 #==============================================================================
 # Save the trained preprocessing systems (normalizer and encoders) for further use 
 #==============================================================================
-print('''STEP 3 -----> Save preprocessed data on local hard drive
+print('''STEP 3 -----> Save files
 ''')
 
 # save encoder
@@ -154,8 +167,8 @@ Number of timepoints in test dataset:  {test_samples}
 -------------------------------------------------------------------------------  
 DISTRIBUTION OF CLASSES
 -------------------------------------------------------------------------------  
-Most frequent class in train dataset: {most_freq_train}
-Most frequent class in test dataset:  {most_freq_test}
+Most frequent class in train dataset:  {most_freq_train}
+Most frequent class in test dataset:   {most_freq_test}
 Number of represented classes in train dataset: {trainset.nunique()}
 Number of represented classes in test dataset: {testset.nunique()}
 ''')
@@ -173,8 +186,8 @@ model_savepath = PP.model_savefolder(GlobVar.model_path, 'FAIRSCCM')
 # initialize model class
 #------------------------------------------------------------------------------
 modelframe = ColorCodeModel(cnf.learning_rate, cnf.window_size, cnf.output_size, 
-                            cnf.neuron_baseline, cnf.embedding_size, len(categories[0]), 
-                            seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
+                            cnf.neuron_baseline, cnf.embedding_size, cnf.kernel_size,
+                            len(categories[0]), seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
 model = modelframe.build()
 model.summary(expand_nested=True)
 
@@ -218,8 +231,7 @@ model.save(model_savepath)
 
 # save model parameters in txt files
 #------------------------------------------------------------------------------
-parameters = {'Model name' : 'CCM',
-              'Number of train samples' : train_samples,
+parameters = {'Number of train samples' : train_samples,
               'Number of test samples' : test_samples,
               'Class encoding' : cnf.color_encoding,
               'Lowest neurons number' : cnf.neuron_baseline,
@@ -253,12 +265,9 @@ class_pred, class_true = np.unique(Y_pred), np.unique(Y_true)
 print(f'''
 Number of classes observed in train (true labels): {len(class_true)}
 Number of classes observed in train (predicted labels): {len(class_pred)}
--------------------------------------------------------------------------------
-Classes observed in predicted train labels:
--------------------------------------------------------------------------------
-{class_pred}
-''')
-
+Classes observed in predicted train labels:''')
+for x in class_pred:
+    print(x)
 
 # generate confusion matrix from train set (if class num is equal)
 #------------------------------------------------------------------------------
@@ -269,7 +278,7 @@ except Exception as e:
     print('Could not generate confusion matrix for train dataset')
     print('Error:', str(e))
 
-# predict labels from test set
+# predict lables from test set
 #------------------------------------------------------------------------------
 if cnf.use_test_data == True:
     predicted_test = model.predict(X_test, verbose=0)
@@ -281,15 +290,11 @@ if cnf.use_test_data == True:
 #------------------------------------------------------------------------------
     class_pred, class_true = np.unique(Y_pred), np.unique(Y_true)
     print(f'''
--------------------------------------------------------------------------------
 Number of classes observed in test (true labels): {len(class_true)}
 Number of classes observed in test (predicted labels): {len(class_pred)}
--------------------------------------------------------------------------------
-Classes observed in predicted test labels:
--------------------------------------------------------------------------------
-{class_pred}
--------------------------------------------------------------------------------
-''')    
+Classes observed in predicted test labels:''')
+    for x in class_pred:
+        print(x)     
 
 # generate confusion matrix from test set (if class num is equal)
 #------------------------------------------------------------------------------
